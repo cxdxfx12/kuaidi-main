@@ -201,6 +201,82 @@ class MainWindow(QMainWindow):
         act_logout.triggered.connect(_logout)
         act_exit.triggered.connect(_exit_app)
 
+        # ── 授权管理菜单
+        license_menu = menubar.addMenu("授权(&L)")
+        act_license_info = license_menu.addAction("查看授权信息")
+        act_reset_license = license_menu.addAction("重置授权")
+
+        def _show_license_info():
+            self._show_license_dialog()
+
+        def _reset_license():
+            reply = QMessageBox.question(
+                self, "重置授权",
+                "重置后将删除当前的授权信息，软件会重新打开激活窗口。\n\n"
+                "您可以使用新的激活码重新激活，或重新开始7天试用。\n\n"
+                "确定要重置吗？",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                from app.core.license_manager import delete_license
+                delete_license()
+                QMessageBox.information(self, "已重置", "授权信息已清除，软件将重新启动激活流程。")
+                self.close()
+                from PyQt5.QtWidgets import QApplication
+                QApplication.instance().quit()
+
+        act_license_info.triggered.connect(_show_license_info)
+        act_reset_license.triggered.connect(_reset_license)
+
+    def _refresh_license_status(self):
+        """刷新品牌顶栏的授权状态标签"""
+        from app.core.license_manager import get_license_info
+        info = get_license_info()
+        if not info["activated"]:
+            self.license_status_label.setText("🔒 未激活")
+            self.license_status_label.setStyleSheet("color: #fecaca; font-size: 12px; padding-right: 12px;")
+        else:
+            remaining = info["remaining_days"]
+            if remaining > 30:
+                color = "#bbf7d0"
+            elif remaining > 7:
+                color = "#fef08a"
+            else:
+                color = "#fecaca"
+            self.license_status_label.setText(f"⏱ 授权剩余 {remaining} 天")
+            self.license_status_label.setStyleSheet(
+                f"color: {color}; font-size: 12px; padding-right: 12px;"
+            )
+
+    def _show_license_dialog(self):
+        """显示授权详情对话框"""
+        from app.core.license_manager import get_license_info
+        info = get_license_info()
+        msg = QMessageBox(self)
+        msg.setWindowTitle("授权信息")
+        msg.setIcon(QMessageBox.Information)
+        msg.setStandardButtons(QMessageBox.Ok)
+
+        if info["activated"]:
+            remaining = info["remaining_days"]
+            if remaining < 0:
+                status = "❌ 已过期"
+            elif remaining <= 7:
+                status = f"⚠️ 即将到期"
+            else:
+                status = "✅ 正常"
+            text = (
+                f"机器码：{info['machine_code']}\n\n"
+                f"激活日期：{info['activated_date']}\n"
+                f"到期日期：{info['expire_date']}\n"
+                f"剩余天数：{remaining} 天\n"
+                f"状态：{status}"
+            )
+        else:
+            text = f"未激活\n\n机器码：{info['machine_code']}\n\n请使用激活码激活或开始试用。"
+        msg.setText(text)
+        msg.exec_()
+
     def _init_database(self):
         """初始化数据库"""
         try:
@@ -601,7 +677,12 @@ class MainWindow(QMainWindow):
         brand_layout.addLayout(left_layout)
         brand_layout.addStretch()
 
-        # 右侧：小信息
+        # 右侧：授权状态 + 口号
+        self.license_status_label = QLabel()
+        self.license_status_label.setStyleSheet("color: #e0e7ff; font-size: 12px; padding-right: 12px;")
+        self._refresh_license_status()
+        brand_layout.addWidget(self.license_status_label)
+
         right_label = QLabel("高效 · 精准 · 智能")
         right_label.setStyleSheet("color: #e0e7ff; font-size: 12px; padding-right: 6px;")
         brand_layout.addWidget(right_label)
